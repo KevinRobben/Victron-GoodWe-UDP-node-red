@@ -74,7 +74,14 @@ socket.on('message', (msg) => {
     const data = lib.parseRunningData(msg);
     const payload = lib.toVictronPayload(data, { maxPower, phase, nrOfPhases: 3 });
     node.status({ fill: 'green', shape: 'dot', text: 'L' + phase + ': ' + data.ac.power + ' W  |  ' + data.energy.total.toFixed(1) + ' kWh' });
-    node.send([{ payload, topic: 'goodwe/pvinverter' }, { payload: data, topic: 'goodwe/data' }]);
+    // Uitgang 1: Victron-payload (naar virtueel toestel).
+    // Uitgang 2: debug — ruwe GoodWe-data + de gemapte Victron-payload.
+    //   Let op: data.ac.l1 is de ENIGE netfase van de 1-fase GoodWe (niet Victron L1).
+    //   De fasekeuze (CONFIG.phase) bepaalt op welke Victron-fase (/Ac/L1|L2|L3) dit terechtkomt.
+    node.send([
+      { payload, topic: 'goodwe/pvinverter' },
+      { payload: { goodwe: data, victronPhase: phase, victron: payload }, topic: 'goodwe/data' },
+    ]);
   } catch (e) {
     node.error('parse: ' + e.message);
     node.status({ fill: 'red', shape: 'ring', text: e.message });
@@ -312,8 +319,8 @@ const flow = [
     id: 'goodwe_debug_data',
     type: 'debug',
     z: TAB,
-    name: 'ruwe data',
-    active: false,
+    name: 'debug (goodwe + victron)',
+    active: true,
     tosidebar: true,
     console: false,
     complete: 'payload',

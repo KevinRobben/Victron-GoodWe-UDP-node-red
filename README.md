@@ -109,6 +109,11 @@ De flow bevat:
 - `scan IP` (start + elke 5 min) → **UDP broadcast :48899** (`udp out`)
 - **ontvang IP :48899** (`udp in`) → **sla IP op** → zet `flow.goodweIp`
 - `poll elke 5s` → **GoodWe: poll & parse** → **GoodWe Virtuele PV-omvormer** (`victron-virtual`)
+  - De status van de poll-node toont de gekozen Victron-fase (bijv. `L2: 1040 W`).
+  - De debug-node toont zowel de GoodWe-uitlezing (`goodwe`) als de Victron-payload
+    (`victron`). In `goodwe.ac.l1` staat de enige netfase van de 1-fase omvormer
+    (niet Victron L1); `victronPhase` + `victron./Ac/L2/...` tonen waar dit
+    terechtkomt op het virtuele toestel.
 
 ### 3. Configureer
 
