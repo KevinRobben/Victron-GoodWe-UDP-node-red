@@ -50,6 +50,7 @@ if (!ip) {
   return null;
 }
 const maxPower = CONFIG.maxPower;
+const phase = CONFIG.phase || 1;
 const socket = dgram.createSocket('udp4');
 let finished = false;
 const timer = setTimeout(() => {
@@ -71,8 +72,8 @@ socket.on('message', (msg) => {
   cleanup();
   try {
     const data = lib.parseRunningData(msg);
-    const payload = lib.toVictronPayload(data, maxPower != null ? { maxPower } : {});
-    node.status({ fill: 'green', shape: 'dot', text: data.ac.power + ' W  |  ' + data.energy.total.toFixed(1) + ' kWh' });
+    const payload = lib.toVictronPayload(data, { maxPower, phase, nrOfPhases: 3 });
+    node.status({ fill: 'green', shape: 'dot', text: 'L' + phase + ': ' + data.ac.power + ' W  |  ' + data.energy.total.toFixed(1) + ' kWh' });
     node.send([{ payload, topic: 'goodwe/pvinverter' }, { payload: data, topic: 'goodwe/data' }]);
   } catch (e) {
     node.error('parse: ' + e.message);
@@ -104,10 +105,13 @@ STAP 1  Pas de node "GoodWe config" aan:
         - inverterIp: laat "" leeg voor automatische discovery, of vul een vast IP in
                       (heeft voorrang op discovery)
         - maxPower:   nominaal vermogen in W (GW3600-NS = 3600)
+        - phase:      fase waarop de 1-fase omvormer is aangesloten (1=L1, 2=L2, 3=L3).
+                      Het virtuele toestel is 3-fase; alleen deze fase krijgt data,
+                      de andere twee blijven op 0 W.
 STAP 2  Werkt discovery niet? Open "UDP broadcast :48899" en zet 'addr' op het
         broadcast-adres van je LAN (bijv. 192.168.1.255).
 STAP 3  Deploy. Open "GoodWe Virtuele PV-omvormer" en controleer de config
-        (device = pvinverter, 1 fase, position). Deploy opnieuw indien gewijzigd.
+        (device = pvinverter, 3 fasen, position). Deploy opnieuw indien gewijzigd.
 
 VEREISTEN
 - Venus OS Large (>= v3.70) met Node-RED en node-red-contrib-victron.
@@ -160,7 +164,7 @@ const flow = [
         t: 'set',
         p: 'goodweConfig',
         pt: 'flow',
-        to: JSON.stringify({ inverterIp: '', maxPower: 3600 }),
+        to: JSON.stringify({ inverterIp: '', maxPower: 3600, phase: 1 }),
         tot: 'json',
       },
     ],
@@ -297,7 +301,7 @@ const flow = [
     name: 'GoodWe Virtuele PV-omvormer',
     device: 'pvinverter',
     position: '0',
-    pvinverter_nrofphases: '1',
+    pvinverter_nrofphases: '3',
     pvinverter_auto_energy: false,
     default_values: true,
     x: 690,

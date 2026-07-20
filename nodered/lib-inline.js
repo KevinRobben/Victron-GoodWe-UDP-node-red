@@ -79,17 +79,31 @@ function buildGoodweLib() {
   }
   function toVictronPayload(d, opts) {
     opts = opts || {};
+    const nrOfPhases = opts.nrOfPhases != null ? opts.nrOfPhases : 3;
+    let phase = opts.phase != null ? Number(opts.phase) : 1;
+    if (!(phase >= 1 && phase <= nrOfPhases)) phase = 1;
+    const voltage = d.ac.l1.voltage;
+    const current = d.ac.l1.current;
     const pl = {
       '/Ac/Power': d.ac.power,
       '/Ac/Energy/Forward': d.energy.total,
-      '/Ac/L1/Power': d.ac.power,
-      '/Ac/L1/Energy/Forward': d.energy.total,
       '/StatusCode': d.statusCode,
       '/ErrorCode': 0,
     };
-    if (d.ac.l1.voltage != null) pl['/Ac/L1/Voltage'] = d.ac.l1.voltage;
-    if (d.ac.l1.current != null) pl['/Ac/L1/Current'] = d.ac.l1.current;
     if (opts.maxPower != null) pl['/Ac/MaxPower'] = opts.maxPower;
+    for (let i = 1; i <= nrOfPhases; i++) {
+      const pre = '/Ac/L' + i;
+      if (i === phase) {
+        pl[pre + '/Power'] = d.ac.power;
+        pl[pre + '/Energy/Forward'] = d.energy.total;
+        if (voltage != null) pl[pre + '/Voltage'] = voltage;
+        if (current != null) pl[pre + '/Current'] = current;
+      } else {
+        pl[pre + '/Power'] = 0;
+        pl[pre + '/Current'] = 0;
+        if (voltage != null) pl[pre + '/Voltage'] = voltage;
+      }
+    }
     return pl;
   }
   return {

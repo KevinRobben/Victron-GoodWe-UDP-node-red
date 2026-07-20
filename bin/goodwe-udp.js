@@ -48,17 +48,17 @@ async function cmdDiscover(flags) {
 
 async function pollOnce(ip, flags) {
   const data = await poll(ip, { timeout: Number(flags.timeout) || 4000 });
-  const out = {
-    data,
-    victron: toVictronPayload(data, flags['max-power'] ? { maxPower: Number(flags['max-power']) } : {}),
-  };
+  const opts = { nrOfPhases: 3 };
+  if (flags['max-power']) opts.maxPower = Number(flags['max-power']);
+  if (flags.phase) opts.phase = Number(flags.phase);
+  const out = { data, victron: toVictronPayload(data, opts) };
   console.log(JSON.stringify(out, null, 2));
 }
 
 async function cmdPoll(positional, flags) {
   const ip = positional[0];
   if (!ip) {
-    console.error('Gebruik: node bin/goodwe-udp.js poll <ip> [--interval 5000] [--max-power 3600]');
+    console.error('Gebruik: node bin/goodwe-udp.js poll <ip> [--interval 5000] [--max-power 3600] [--phase 1]');
     process.exitCode = 1;
     return;
   }
@@ -106,7 +106,7 @@ async function main() {
     default:
       console.error('GoodWe UDP CLI');
       console.error('  node bin/goodwe-udp.js discover [--broadcast <addr>] [--timeout <ms>]');
-      console.error('  node bin/goodwe-udp.js poll <ip> [--interval <ms>] [--timeout <ms>] [--max-power <W>]');
+      console.error('  node bin/goodwe-udp.js poll <ip> [--interval <ms>] [--timeout <ms>] [--max-power <W>] [--phase <1|2|3>]');
       console.error('  node bin/goodwe-udp.js decode <hexstring>');
       process.exitCode = 1;
   }

@@ -115,20 +115,31 @@ De flow bevat:
 Open de **GoodWe config** node (change-node) en pas het object aan:
 
 ```json
-{ "inverterIp": "", "maxPower": 3600 }
+{ "inverterIp": "", "maxPower": 3600, "phase": 1 }
 ```
 
 - **`inverterIp`** — laat `""` leeg voor automatische discovery, óf vul het vaste
   IP-adres van de omvormer in (aanbevolen zodra je het IP kent, bijv. via een
   DHCP-reservering). Een ingevuld IP heeft **voorrang** op discovery.
 - **`maxPower`** — nominaal vermogen in watt (GW3600-NS = `3600`).
+- **`phase`** — de fase waarop de 1-fase omvormer is aangesloten: `1` = L1,
+  `2` = L2, `3` = L3.
 
 Werkt de automatische discovery niet? Open dan de **UDP broadcast :48899**
 (`udp out`) node en zet `addr` op het broadcast-adres van je LAN
 (bijv. `192.168.1.255`) in plaats van `255.255.255.255`.
 
 Open daarna de **GoodWe Virtuele PV-omvormer** node en controleer:
-*device = PV inverter*, *aantal fasen = 1*, *positie* (0 = AC-ingang 1). **Deploy**.
+*device = PV inverter*, *aantal fasen = 3*, *positie* (0 = AC-ingang 1). **Deploy**.
+
+#### Fasekeuze bij een 1-fase omvormer
+
+Het virtuele toestel wordt als **3-fase** PV-omvormer aangemaakt. De GoodWe is
+1-fase, dus alleen de met `phase` gekozen fase krijgt het werkelijke
+vermogen/stroom/energie; de andere twee fasen blijven op **0 W** (met de gemeten
+netspanning, zodat Victron het toestel als geldig herkent). Zo verschijnt de
+opbrengst in VRM op exact de fase waarop de omvormer fysiek is aangesloten.
+`/Ac/Power` (totaal) blijft altijd het volledige vermogen van de omvormer.
 
 ### 4. Over de `dgram`-module in de poll-functie
 
@@ -167,8 +178,8 @@ en gebruik de CLI om te valideren dat het protocol werkt:
 # 1. Ontdek de omvormer op het netwerk
 node bin/goodwe-udp.js discover --broadcast 192.168.1.255
 
-# 2. Poll de actuele data (eenmalig)
-node bin/goodwe-udp.js poll 192.168.1.50 --max-power 3600
+# 2. Poll de actuele data (eenmalig); --phase kiest L1/L2/L3
+node bin/goodwe-udp.js poll 192.168.1.50 --max-power 3600 --phase 1
 
 # 3. Continu pollen (elke 5s)
 node bin/goodwe-udp.js poll 192.168.1.50 --interval 5000
@@ -189,8 +200,10 @@ Voorbeelduitvoer van `poll`:
   },
   "victron": {
     "/Ac/Power": 1972, "/Ac/Energy/Forward": 4351.3,
-    "/Ac/L1/Power": 1972, "/Ac/L1/Voltage": 228.6, "/Ac/L1/Current": 8.6,
-    "/Ac/MaxPower": 3600, "/StatusCode": 7, "/ErrorCode": 0
+    "/Ac/MaxPower": 3600, "/StatusCode": 7, "/ErrorCode": 0,
+    "/Ac/L1/Power": 1972, "/Ac/L1/Voltage": 228.6, "/Ac/L1/Current": 8.6, "/Ac/L1/Energy/Forward": 4351.3,
+    "/Ac/L2/Power": 0, "/Ac/L2/Current": 0, "/Ac/L2/Voltage": 228.6,
+    "/Ac/L3/Power": 0, "/Ac/L3/Current": 0, "/Ac/L3/Voltage": 228.6
   }
 }
 ```
