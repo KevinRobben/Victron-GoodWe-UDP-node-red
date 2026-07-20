@@ -1,0 +1,33 @@
+{
+  "name": "victron-goodwe-udp",
+  "version": "1.0.0",
+  "description": "Lees een GoodWe GW3600-NS (DT/NS-familie) lokaal uit via het ongedocumenteerde UDP-protocol en publiceer de zonnestroomopbrengst naar Victron Venus OS als Virtual PV Inverter (Node-RED).",
+  "keywords": [
+    "goodwe",
+    "victron",
+    "venus-os",
+    "node-red",
+    "pv-inverter",
+    "udp",
+    "solar"
+  ],
+  "license": "MIT",
+  "main": "lib/goodwe.js",
+  "bin": {
+    "goodwe-udp": "bin/goodwe-udp.js"
+  },
+  "scripts": {
+    "test": "node --test",
+    "build:flow": "node nodered/build-flow.js",
+    "discover": "node bin/goodwe-udp.js discover",
+    "poll": "node bin/goodwe-udp.js poll"
+  },
+  "engines": {
+    "node": ">=16"
+  },
+  "files": [
+    "lib/",
+    "bin/",
+    "nodered/"
+  ]
+}
