@@ -19,37 +19,20 @@ const path = require('path');
 
 const inlineLib = fs.readFileSync(path.join(__dirname, 'lib-inline.js'), 'utf8');
 
-const initFunc = `${inlineLib}
-// --- GoodWe: init & discovery ---
-if (!global.get('goodweLib')) global.set('goodweLib', buildGoodweLib());
-const lib = global.get('goodweLib');
-const CONFIG = flow.get('goodweConfig') || {};
-const broadcast = CONFIG.broadcast || '255.255.255.255';
-
-// Handmatig IP ingesteld? Dan discovery overslaan.
-if (CONFIG.inverterIp) {
-  flow.set('goodweIp', CONFIG.inverterIp);
-  node.status({ fill: 'green', shape: 'dot', text: 'IP (handmatig): ' + CONFIG.inverterIp });
-  return null;
+// Discovery gebeurt met de standaard node-red-node-udp nodes (udp out/in) in
+// plaats van dgram: de GoodWe/Solarman-dongle antwoordt op poort 48899, dus de
+// "udp in" node luistert daar. Deze parse-functie slaat het IP op onder dezelfde
+// context-key ('goodweIp') die de poll-functie uitleest.
+const parseIpFunc = `// --- Discovery-antwoord verwerken (IP,MAC,SSID) ---
+const raw = (msg.payload == null ? '' : msg.payload.toString()).trim();
+const parts = raw.split(',');
+const ip = parts[0];
+if (/^\\d{1,3}(\\.\\d{1,3}){3}$/.test(ip)) {
+  flow.set('goodweIp', ip);
+  node.status({ fill: 'green', shape: 'dot', text: 'IP gevonden: ' + ip });
+  return { payload: { ip, mac: parts[1] || null, ssid: parts.slice(2).join(',') || null, raw }, topic: 'goodwe/discovery' };
 }
-
-node.status({ fill: 'blue', shape: 'dot', text: 'discovery...' });
-const socket = dgram.createSocket({ type: 'udp4', reuseAddr: true });
-socket.on('error', (e) => { node.error('discovery: ' + e.message); try { socket.close(); } catch (_) {} });
-socket.on('message', (msg, rinfo) => {
-  const r = lib.parseDiscoveryResponse(msg) || { ip: rinfo.address, raw: msg.toString('ascii') };
-  flow.set('goodweIp', r.ip);
-  node.status({ fill: 'green', shape: 'dot', text: 'gevonden: ' + r.ip });
-  node.send({ payload: r, topic: 'goodwe/discovery' });
-});
-socket.bind(() => {
-  try { socket.setBroadcast(true); } catch (_) {}
-  socket.send(lib.DISCOVERY_REQUEST, lib.DISCOVERY_PORT, broadcast, (e) => { if (e) node.error('discovery send: ' + e.message); });
-});
-setTimeout(() => {
-  if (!flow.get('goodweIp')) node.status({ fill: 'yellow', shape: 'ring', text: 'geen omvormer gevonden' });
-  try { socket.close(); } catch (_) {}
-}, 3000);
+node.status({ fill: 'yellow', shape: 'ring', text: 'onbekend antwoord' });
 return null;
 `;
 
@@ -107,21 +90,30 @@ const TAB = 'goodwe_udp_tab';
 
 const comment = `GoodWe GW3600-NS  ->  Victron Virtual PV Inverter (via lokaal UDP)
 
+WERKING
+- Discovery: de "scan IP" inject stuurt een UDP-broadcast "WIFIKIT-214028-READ"
+  naar poort 48899 (udp out). De dongle antwoordt op poort 48899 (udp in), de
+  parse-functie slaat het IP op als flow-variabele 'goodweIp'.
+- Poll: elke 5s wordt de omvormer op poort 8899 uitgelezen (dgram) en als
+  Virtual PV Inverter naar Victron geschreven.
+
 STAP 1  Pas de node "GoodWe config" aan:
         - inverterIp: laat "" leeg voor automatische discovery, of vul een vast IP in
+                      (heeft voorrang op discovery)
         - maxPower:   nominaal vermogen in W (GW3600-NS = 3600)
-        - broadcast:  broadcast-adres van je LAN (bijv. 192.168.1.255) voor discovery
-STAP 2  Deploy. Klik eenmalig op "start" (discovery draait ook automatisch bij deploy).
-STAP 3  Open de node "GoodWe Virtuele PV-omvormer" en controleer/bevestig de config
+STAP 2  Werkt discovery niet? Open "UDP broadcast :48899" en zet 'addr' op het
+        broadcast-adres van je LAN (bijv. 192.168.1.255).
+STAP 3  Deploy. Open "GoodWe Virtuele PV-omvormer" en controleer de config
         (device = pvinverter, 1 fase, position). Deploy opnieuw indien gewijzigd.
 
 VEREISTEN
 - Venus OS Large (>= v3.70) met Node-RED en node-red-contrib-victron.
-- Function nodes met externe modules ingeschakeld (standaard aan): de module
-  "dgram" is toegevoegd onder Setup > Modules van de twee GoodWe function nodes.
+- node-red-node-udp (levert de "udp in"/"udp out" nodes; standaard aanwezig).
+- Function node "GoodWe: poll & parse" gebruikt de core-module "dgram", toegevoegd
+  onder Setup > Modules (werkt met de standaard functionExternalModules: true).
   Werkt dit niet, voeg dan in settings.js toe:
       functionGlobalContext: { dgram: require('dgram') }
-  en vervang in de function nodes  dgram  door  global.get('dgram').`;
+  en vervang in die function node  dgram  door  global.get('dgram').`;
 
 const flow = [
   { id: TAB, type: 'tab', label: 'GoodWe -> Victron PV', disabled: false, info: '' },
@@ -137,7 +129,7 @@ const flow = [
     wires: [],
   },
 
-  // --- Startup / discovery keten ---
+  // --- Startup: config zetten ---
   {
     id: 'goodwe_inject_start',
     type: 'inject',
@@ -152,7 +144,7 @@ const flow = [
     payload: 'true',
     payloadType: 'bool',
     x: 170,
-    y: 120,
+    y: 100,
     wires: [['goodwe_config']],
   },
   {
@@ -165,7 +157,7 @@ const flow = [
         t: 'set',
         p: 'goodweConfig',
         pt: 'flow',
-        to: JSON.stringify({ inverterIp: '', maxPower: 3600, broadcast: '255.255.255.255' }),
+        to: JSON.stringify({ inverterIp: '', maxPower: 3600 }),
         tot: 'json',
       },
     ],
@@ -175,23 +167,73 @@ const flow = [
     to: '',
     reg: false,
     x: 400,
-    y: 120,
-    wires: [['goodwe_fn_init']],
+    y: 100,
+    wires: [[]],
+  },
+
+  // --- Discovery-keten (node-red-node-udp: broadcast + luisteren op 48899) ---
+  {
+    id: 'goodwe_inject_scan',
+    type: 'inject',
+    z: TAB,
+    name: 'scan IP (start + elke 5 min)',
+    props: [{ p: 'payload' }],
+    repeat: '300',
+    crontab: '',
+    once: true,
+    onceDelay: '2',
+    topic: '',
+    payload: 'WIFIKIT-214028-READ',
+    payloadType: 'str',
+    x: 190,
+    y: 160,
+    wires: [['goodwe_udp_out']],
   },
   {
-    id: 'goodwe_fn_init',
+    id: 'goodwe_udp_out',
+    type: 'udp out',
+    z: TAB,
+    name: 'UDP broadcast :48899',
+    addr: '255.255.255.255',
+    iface: '',
+    port: '48899',
+    ipv: 'udp4',
+    outport: '',
+    base64: false,
+    multicast: 'board',
+    x: 470,
+    y: 160,
+    wires: [],
+  },
+  {
+    id: 'goodwe_udp_in',
+    type: 'udp in',
+    z: TAB,
+    name: 'ontvang IP :48899',
+    iface: '',
+    port: '48899',
+    ipv: 'udp4',
+    multicast: 'false',
+    group: '',
+    datatype: 'utf8',
+    x: 180,
+    y: 220,
+    wires: [['goodwe_fn_parse_ip']],
+  },
+  {
+    id: 'goodwe_fn_parse_ip',
     type: 'function',
     z: TAB,
-    name: 'GoodWe: init & discovery',
-    func: initFunc,
+    name: 'sla IP op (goodweIp)',
+    func: parseIpFunc,
     outputs: 1,
     timeout: 0,
     noerr: 0,
     initialize: '',
     finalize: '',
-    libs: [{ var: 'dgram', module: 'dgram' }],
-    x: 650,
-    y: 120,
+    libs: [],
+    x: 430,
+    y: 220,
     wires: [['goodwe_debug_disc']],
   },
   {
@@ -206,8 +248,8 @@ const flow = [
     targetType: 'msg',
     statusVal: '',
     statusType: 'auto',
-    x: 900,
-    y: 120,
+    x: 680,
+    y: 220,
     wires: [],
   },
 
@@ -226,7 +268,7 @@ const flow = [
     payload: '',
     payloadType: 'date',
     x: 150,
-    y: 220,
+    y: 320,
     wires: [['goodwe_fn_poll']],
   },
   {
@@ -242,7 +284,7 @@ const flow = [
     finalize: '',
     libs: [{ var: 'dgram', module: 'dgram' }],
     x: 390,
-    y: 220,
+    y: 320,
     wires: [['goodwe_virtual_pv'], ['goodwe_debug_data']],
   },
   {
@@ -256,7 +298,7 @@ const flow = [
     pvinverter_auto_energy: false,
     default_values: true,
     x: 690,
-    y: 200,
+    y: 300,
     wires: [[]],
   },
   {
@@ -272,7 +314,7 @@ const flow = [
     statusVal: '',
     statusType: 'auto',
     x: 660,
-    y: 260,
+    y: 360,
     wires: [],
   },
 ];

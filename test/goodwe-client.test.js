@@ -39,8 +39,8 @@ test('poll() geeft time-out-fout wanneer er geen antwoord komt', async () => {
   await assert.rejects(() => poll('127.0.0.1', { port: 9, timeout: 300, retries: 0 }), /time-out/);
 });
 
-test('discover() vangt een broadcast-antwoord op', async (t) => {
-  // Mock-dongle die op elk bericht een discovery-antwoord terugstuurt.
+test('discover() vangt een discovery-antwoord op en parseert IP,MAC,SSID', async (t) => {
+  // Mock-dongle op poort 48899 die op elk bericht een discovery-antwoord terugstuurt.
   const dongle = dgram.createSocket({ type: 'udp4', reuseAddr: true });
   await new Promise((resolve) => {
     dongle.on('message', (msg, rinfo) => {
@@ -50,9 +50,39 @@ test('discover() vangt een broadcast-antwoord op', async (t) => {
   });
   t.after(() => dongle.close());
 
-  const results = await discover({ broadcastAddress: '127.0.0.1', timeout: 800 });
+  // localPort 0 (efemeer) zodat de test niet botst met de mock-dongle op 48899;
+  // in productie bindt discover() standaard op 48899 om het antwoord op te vangen.
+  const results = await discover({
+    broadcastAddress: '127.0.0.1',
+    targetPort: 48899,
+    localPort: 0,
+    timeout: 800,
+  });
   assert.ok(results.length >= 1, 'verwachtte minstens 1 resultaat');
   const found = results.find((r) => r.ssid === 'Solar-WiFiTEST0001');
   assert.ok(found, 'discovery-antwoord niet correct geparseerd');
   assert.equal(found.mac, 'B8F009AABBCC');
+});
+
+test('discover() bindt standaard op poort 48899 (dongle-antwoordpoort)', async (t) => {
+  // De dongle antwoordt op poort 48899; discover moet daar dus op luisteren.
+  const dongle = dgram.createSocket({ type: 'udp4', reuseAddr: true });
+  await new Promise((resolve) => {
+    dongle.on('message', (msg, rinfo) => {
+      // Antwoord expliciet NAAR poort 48899 (zoals een echte dongle doet).
+      dongle.send('127.0.0.1,AABBCCDDEEFF,Solar-WiFiPORT48899', 48899, '127.0.0.1');
+    });
+    dongle.bind(0, '127.0.0.1', resolve);
+  });
+  const donglePort = dongle.address().port;
+  t.after(() => dongle.close());
+
+  const results = await discover({
+    broadcastAddress: '127.0.0.1',
+    targetPort: donglePort,
+    // localPort niet gezet => standaard 48899
+    timeout: 800,
+  });
+  const found = results.find((r) => r.ssid === 'Solar-WiFiPORT48899');
+  assert.ok(found, 'antwoord op poort 48899 werd niet opgevangen');
 });

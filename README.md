@@ -23,10 +23,17 @@ toestel communiceert uitsluitend via een reverse-engineerd UDP-protocol:
 | Data pollen  | `8899`      | unicast    | `AA55`-ingepakt pseudo-Modbus (READ HOLDING REGISTERS) |
 
 Omdat `node-red-contrib-goodwe` niet installeerbaar is, implementeert deze
-oplossing het protocol in **pure JavaScript** met alleen de Node.js core-module
-`dgram`. De protocol-details (hex-commando's en byte-offsets) zijn gebaseerd op
-`pkot/node-red-contrib-goodwe` en `marcelblijleven/goodwe`, en geverifieerd
-tegen echte inverter-captures (zie de tests).
+oplossing het protocol in **pure JavaScript**. De protocol-details (hex-commando's
+en byte-offsets) zijn gebaseerd op `pkot/node-red-contrib-goodwe` en
+`marcelblijleven/goodwe`, en geverifieerd tegen echte inverter-captures (zie de
+tests).
+
+> **Discovery vs. polling in de flow.** De dongle stuurt het discovery-antwoord
+> terug op poort **48899** (vaak als broadcast), niet naar de bronpoort. Daarom
+> gebruikt de Node-RED flow voor **discovery** de standaard `udp in`/`udp out`
+> nodes (die op poort 48899 luisteren), en voor het **pollen** de core-module
+> `dgram` (unicast request/response op poort 8899). De standalone CLI/library
+> `discover()` bindt om dezelfde reden op poort 48899.
 
 ---
 
@@ -85,6 +92,8 @@ test/                  Unit- en UDP-integratietests (node:test, echte captures)
   (*Settings → Venus OS Large features → Node-RED*).
 - Het pakket **`node-red-contrib-victron`** (standaard aanwezig op Venus OS
   Large) — levert de `victron-virtual` node.
+- De nodes **`udp in`/`udp out`** (`node-red-node-udp`, standaard aanwezig) —
+  gebruikt voor de discovery.
 - De GoodWe-omvormer en de Venus OS moeten in **hetzelfde IP-subnet** zitten.
 
 ### 2. Importeer de flow
@@ -96,7 +105,9 @@ test/                  Unit- en UDP-integratietests (node:test, echte captures)
 
 De flow bevat:
 
-- `start` (1×) → **GoodWe config** → **GoodWe: init & discovery**
+- `start` (1×) → **GoodWe config** (zet `flow.goodweConfig`)
+- `scan IP` (start + elke 5 min) → **UDP broadcast :48899** (`udp out`)
+- **ontvang IP :48899** (`udp in`) → **sla IP op** → zet `flow.goodweIp`
 - `poll elke 5s` → **GoodWe: poll & parse** → **GoodWe Virtuele PV-omvormer** (`victron-virtual`)
 
 ### 3. Configureer
@@ -104,24 +115,28 @@ De flow bevat:
 Open de **GoodWe config** node (change-node) en pas het object aan:
 
 ```json
-{ "inverterIp": "", "maxPower": 3600, "broadcast": "255.255.255.255" }
+{ "inverterIp": "", "maxPower": 3600 }
 ```
 
 - **`inverterIp`** — laat `""` leeg voor automatische discovery, óf vul het vaste
   IP-adres van de omvormer in (aanbevolen zodra je het IP kent, bijv. via een
-  DHCP-reservering).
+  DHCP-reservering). Een ingevuld IP heeft **voorrang** op discovery.
 - **`maxPower`** — nominaal vermogen in watt (GW3600-NS = `3600`).
-- **`broadcast`** — voor discovery: het broadcast-adres van je LAN
-  (bijv. `192.168.1.255`). `255.255.255.255` werkt meestal ook.
+
+Werkt de automatische discovery niet? Open dan de **UDP broadcast :48899**
+(`udp out`) node en zet `addr` op het broadcast-adres van je LAN
+(bijv. `192.168.1.255`) in plaats van `255.255.255.255`.
 
 Open daarna de **GoodWe Virtuele PV-omvormer** node en controleer:
 *device = PV inverter*, *aantal fasen = 1*, *positie* (0 = AC-ingang 1). **Deploy**.
 
-### 4. Over de `dgram`-module in function nodes
+### 4. Over de `dgram`-module in de poll-functie
 
-De twee GoodWe function nodes gebruiken de core-module `dgram`. Deze is al
-toegevoegd onder **Setup → Modules** (`dgram` → variabele `dgram`). Dit werkt met
-de standaardinstelling `functionExternalModules: true` van Node-RED.
+De function node **GoodWe: poll & parse** gebruikt de core-module `dgram`
+(unicast op poort 8899). Deze is al toegevoegd onder **Setup → Modules**
+(`dgram` → variabele `dgram`). Dit werkt met de standaardinstelling
+`functionExternalModules: true` van Node-RED. De **discovery** gebruikt géén
+`dgram` — die verloopt via de `udp in`/`udp out` nodes.
 
 **Werkt de import van `dgram` niet** (oudere Node-RED / `functionExternalModules`
 uitgeschakeld)? Voeg dan in `settings.js`
@@ -133,7 +148,7 @@ functionGlobalContext: {
 },
 ```
 
-Vervang vervolgens in beide function nodes de regel die `dgram` gebruikt door:
+Vervang vervolgens in de poll-function node de regel die `dgram` gebruikt door:
 
 ```js
 const dgram = global.get('dgram');
@@ -202,7 +217,8 @@ waarden, en testen `poll()`/`discover()` end-to-end via een mock-UDP-server.
 
 | Symptoom | Oorzaak / oplossing |
 |----------|---------------------|
-| Function node-status: *"nog geen IP"* | Discovery vond niets. Vul `inverterIp` handmatig in, of zet het juiste `broadcast`-adres. |
+| Poll-status: *"nog geen IP"* | Discovery vond niets. Vul `inverterIp` handmatig in in de config-node, of zet in de `udp out` node het juiste LAN-broadcast-adres (bijv. `192.168.1.255`). |
+| Discovery-status: *"onbekend antwoord"* | Er kwam wel een pakket op poort 48899 binnen, maar zonder herkenbaar `IP,...`. Controleer met de CLI (`discover`) of met een debug-node op de `udp in` node wat de dongle terugstuurt. |
 | Function node-status: *"time-out"* | Omvormer offline (bijv. 's nachts) of verkeerd IP/subnet. `'s Nachts is dit normaal. |
 | *"dgram is not defined"* | `functionExternalModules` uit → gebruik de `settings.js` + `global.get('dgram')` methode (zie boven). |
 | PV-inverter niet zichtbaar in VRM | Controleer de `victron-virtual` node (device = pvinverter) en of Node-RED foutloos deployt. Even geduld: VRM synct met vertraging. |
