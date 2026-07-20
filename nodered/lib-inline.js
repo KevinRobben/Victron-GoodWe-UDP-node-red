@@ -82,8 +82,9 @@ function buildGoodweLib() {
     const nrOfPhases = opts.nrOfPhases != null ? opts.nrOfPhases : 3;
     let phase = opts.phase != null ? Number(opts.phase) : 1;
     if (!(phase >= 1 && phase <= nrOfPhases)) phase = 1;
-    const voltage = d.ac.l1.voltage;
-    const current = d.ac.l1.current;
+    const nominalVoltage = opts.nominalVoltage != null ? opts.nominalVoltage : 230;
+    const voltage = d.ac.l1.voltage != null ? d.ac.l1.voltage : nominalVoltage;
+    const current = d.ac.l1.current != null ? d.ac.l1.current : 0;
     const pl = {
       '/Ac/Power': d.ac.power,
       '/Ac/Energy/Forward': d.energy.total,
@@ -93,16 +94,11 @@ function buildGoodweLib() {
     if (opts.maxPower != null) pl['/Ac/MaxPower'] = opts.maxPower;
     for (let i = 1; i <= nrOfPhases; i++) {
       const pre = '/Ac/L' + i;
-      if (i === phase) {
-        pl[pre + '/Power'] = d.ac.power;
-        pl[pre + '/Energy/Forward'] = d.energy.total;
-        if (voltage != null) pl[pre + '/Voltage'] = voltage;
-        if (current != null) pl[pre + '/Current'] = current;
-      } else {
-        pl[pre + '/Power'] = 0;
-        pl[pre + '/Current'] = 0;
-        if (voltage != null) pl[pre + '/Voltage'] = voltage;
-      }
+      const active = i === phase;
+      pl[pre + '/Voltage'] = voltage;
+      pl[pre + '/Current'] = active ? current : 0;
+      pl[pre + '/Power'] = active ? d.ac.power : 0;
+      pl[pre + '/Energy/Forward'] = active ? d.energy.total : 0;
     }
     return pl;
   }

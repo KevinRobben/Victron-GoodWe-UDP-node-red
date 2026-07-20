@@ -136,10 +136,16 @@ Open daarna de **GoodWe Virtuele PV-omvormer** node en controleer:
 
 Het virtuele toestel wordt als **3-fase** PV-omvormer aangemaakt. De GoodWe is
 1-fase, dus alleen de met `phase` gekozen fase krijgt het werkelijke
-vermogen/stroom/energie; de andere twee fasen blijven op **0 W** (met de gemeten
-netspanning, zodat Victron het toestel als geldig herkent). Zo verschijnt de
-opbrengst in VRM op exact de fase waarop de omvormer fysiek is aangesloten.
-`/Ac/Power` (totaal) blijft altijd het volledige vermogen van de omvormer.
+vermogen/stroom/energie; de andere twee fasen blijven op **0 W**.
+
+> **Belangrijk:** elke fase krijgt bij élke update **expliciet alle waarden**
+> (`Power`, `Current`, `Voltage`, `Energy/Forward`), waarbij de ongebruikte fasen
+> een **geldige spanning** (de gemeten netspanning, of `230 V` als fallback) en
+> `0 W` / `0 A` / `0 kWh` krijgen. Krijgen de andere fasen géén geldige waarde,
+> dan beschouwt Victron ze niet als echte fasen en plaatst het het vermogen
+> alsnog op L1. Zo verschijnt de opbrengst in VRM op exact de fase waarop de
+> omvormer fysiek is aangesloten. `/Ac/Power` (totaal) blijft altijd het
+> volledige vermogen van de omvormer.
 
 ### 4. Over de `dgram`-module in de poll-functie
 
@@ -201,9 +207,9 @@ Voorbeelduitvoer van `poll`:
   "victron": {
     "/Ac/Power": 1972, "/Ac/Energy/Forward": 4351.3,
     "/Ac/MaxPower": 3600, "/StatusCode": 7, "/ErrorCode": 0,
-    "/Ac/L1/Power": 1972, "/Ac/L1/Voltage": 228.6, "/Ac/L1/Current": 8.6, "/Ac/L1/Energy/Forward": 4351.3,
-    "/Ac/L2/Power": 0, "/Ac/L2/Current": 0, "/Ac/L2/Voltage": 228.6,
-    "/Ac/L3/Power": 0, "/Ac/L3/Current": 0, "/Ac/L3/Voltage": 228.6
+    "/Ac/L1/Voltage": 228.6, "/Ac/L1/Current": 8.6, "/Ac/L1/Power": 1972, "/Ac/L1/Energy/Forward": 4351.3,
+    "/Ac/L2/Voltage": 228.6, "/Ac/L2/Current": 0, "/Ac/L2/Power": 0, "/Ac/L2/Energy/Forward": 0,
+    "/Ac/L3/Voltage": 228.6, "/Ac/L3/Current": 0, "/Ac/L3/Power": 0, "/Ac/L3/Energy/Forward": 0
   }
 }
 ```

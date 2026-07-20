@@ -154,15 +154,30 @@ test('toVictronPayload standaard: 3-fase toestel, data op L1', () => {
   assert.equal(p['/Ac/L1/Power'], 1972);
   assert.equal(p['/Ac/L1/Voltage'], 228.6);
   assert.equal(p['/Ac/L1/Current'], 8.6);
-  // L2 en L3 op 0 W / 0 A, maar wél spanning
+  // L2 en L3 op 0 W / 0 A / 0 kWh, maar wél spanning
   assert.equal(p['/Ac/L2/Power'], 0);
   assert.equal(p['/Ac/L2/Current'], 0);
   assert.equal(p['/Ac/L2/Voltage'], 228.6);
+  assert.equal(p['/Ac/L2/Energy/Forward'], 0);
   assert.equal(p['/Ac/L3/Power'], 0);
   assert.equal(p['/Ac/L3/Current'], 0);
+  assert.equal(p['/Ac/L3/Voltage'], 228.6);
+  assert.equal(p['/Ac/L3/Energy/Forward'], 0);
 });
 
-test('toVictronPayload met phase=2: data op L2, L1 en L3 op 0 W', () => {
+test('elke fase krijgt altijd expliciet alle waarden (Power/Current/Voltage/Energy)', () => {
+  const d = parseRunningData(hex(capGW3000DNS30));
+  const p = toVictronPayload(d, { phase: 2 });
+  for (const i of [1, 2, 3]) {
+    for (const path of ['Power', 'Current', 'Voltage', 'Energy/Forward']) {
+      assert.ok(`/Ac/L${i}/${path}` in p, `ontbrekend pad: /Ac/L${i}/${path}`);
+    }
+    // Elke fase heeft een geldige (niet-nul) spanning.
+    assert.ok(p[`/Ac/L${i}/Voltage`] > 0, `fase L${i} mist geldige spanning`);
+  }
+});
+
+test('toVictronPayload met phase=2: data op L2, L1 en L3 op 0 W (met spanning + 0 energie)', () => {
   const d = parseRunningData(hex(capGW3000DNS30));
   const p = toVictronPayload(d, { maxPower: 3600, phase: 2 });
   // Totaalvermogen ongewijzigd
@@ -172,20 +187,24 @@ test('toVictronPayload met phase=2: data op L2, L1 en L3 op 0 W', () => {
   assert.equal(p['/Ac/L2/Voltage'], 228.6);
   assert.equal(p['/Ac/L2/Current'], 8.6);
   assert.equal(p['/Ac/L2/Energy/Forward'], d.energy.total);
-  // L1 en L3 op 0 W
+  // L1 en L3: 0 W / 0 A / 0 kWh maar wél geldige spanning
   assert.equal(p['/Ac/L1/Power'], 0);
   assert.equal(p['/Ac/L1/Current'], 0);
+  assert.equal(p['/Ac/L1/Energy/Forward'], 0);
+  assert.equal(p['/Ac/L1/Voltage'], 228.6);
   assert.equal(p['/Ac/L3/Power'], 0);
-  // L1/L3 dragen geen power-energie
-  assert.ok(!('/Ac/L1/Energy/Forward' in p));
+  assert.equal(p['/Ac/L3/Energy/Forward'], 0);
+  assert.equal(p['/Ac/L3/Voltage'], 228.6);
 });
 
-test('toVictronPayload met phase=3: data op L3', () => {
+test('toVictronPayload met phase=3: data op L3, L1/L2 op 0 W met spanning', () => {
   const d = parseRunningData(hex(capGW3000DNS30));
   const p = toVictronPayload(d, { phase: 3 });
   assert.equal(p['/Ac/L3/Power'], 1972);
   assert.equal(p['/Ac/L1/Power'], 0);
   assert.equal(p['/Ac/L2/Power'], 0);
+  assert.equal(p['/Ac/L1/Voltage'], 228.6);
+  assert.equal(p['/Ac/L2/Voltage'], 228.6);
 });
 
 test('toVictronPayload ongeldige phase valt terug op L1', () => {
