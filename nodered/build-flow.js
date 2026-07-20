@@ -24,15 +24,18 @@ const inlineLib = fs.readFileSync(path.join(__dirname, 'lib-inline.js'), 'utf8')
 // "udp in" node luistert daar. Deze parse-functie slaat het IP op onder dezelfde
 // context-key ('goodweIp') die de poll-functie uitleest.
 const parseIpFunc = `// --- Discovery-antwoord verwerken (IP,MAC,SSID) ---
+// Let op: de "udp in" node op poort 48899 ontvangt ook de eigen verzonden
+// broadcast ("WIFIKIT-214028-READ"). Dat pakket negeren we stil, zodat het de
+// groene "IP gevonden"-status niet overschrijft.
 const raw = (msg.payload == null ? '' : msg.payload.toString()).trim();
 const parts = raw.split(',');
 const ip = parts[0];
-if (/^\\d{1,3}(\\.\\d{1,3}){3}$/.test(ip)) {
+if (/^\\d{1,3}(\\.\\d{1,3}){3}$/.test(ip) && parts.length >= 2) {
   flow.set('goodweIp', ip);
   node.status({ fill: 'green', shape: 'dot', text: 'IP gevonden: ' + ip });
   return { payload: { ip, mac: parts[1] || null, ssid: parts.slice(2).join(',') || null, raw }, topic: 'goodwe/discovery' };
 }
-node.status({ fill: 'yellow', shape: 'ring', text: 'onbekend antwoord' });
+// Onbekend/eigen pakket: stil negeren, status niet wijzigen.
 return null;
 `;
 

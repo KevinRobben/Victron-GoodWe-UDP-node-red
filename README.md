@@ -218,7 +218,7 @@ waarden, en testen `poll()`/`discover()` end-to-end via een mock-UDP-server.
 | Symptoom | Oorzaak / oplossing |
 |----------|---------------------|
 | Poll-status: *"nog geen IP"* | Discovery vond niets. Vul `inverterIp` handmatig in in de config-node, of zet in de `udp out` node het juiste LAN-broadcast-adres (bijv. `192.168.1.255`). |
-| Discovery-status: *"onbekend antwoord"* | Er kwam wel een pakket op poort 48899 binnen, maar zonder herkenbaar `IP,...`. Controleer met de CLI (`discover`) of met een debug-node op de `udp in` node wat de dongle terugstuurt. |
+| Discovery bleef eerst op *"onbekend antwoord"* staan | De `udp in` node op poort 48899 ontvangt ook de eigen verzonden broadcast (`WIFIKIT-214028-READ`). Die wordt nu stil genegeerd, zodat de groene *"IP gevonden"*-status blijft staan zodra de dongle antwoordt. |
 | Function node-status: *"time-out"* | Omvormer offline (bijv. 's nachts) of verkeerd IP/subnet. `'s Nachts is dit normaal. |
 | *"dgram is not defined"* | `functionExternalModules` uit → gebruik de `settings.js` + `global.get('dgram')` methode (zie boven). |
 | PV-inverter niet zichtbaar in VRM | Controleer de `victron-virtual` node (device = pvinverter) en of Node-RED foutloos deployt. Even geduld: VRM synct met vertraging. |

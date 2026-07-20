@@ -131,7 +131,7 @@
     "type": "function",
     "z": "goodwe_udp_tab",
     "name": "sla IP op (goodweIp)",
-    "func": "// --- Discovery-antwoord verwerken (IP,MAC,SSID) ---\nconst raw = (msg.payload == null ? '' : msg.payload.toString()).trim();\nconst parts = raw.split(',');\nconst ip = parts[0];\nif (/^\\d{1,3}(\\.\\d{1,3}){3}$/.test(ip)) {\n  flow.set('goodweIp', ip);\n  node.status({ fill: 'green', shape: 'dot', text: 'IP gevonden: ' + ip });\n  return { payload: { ip, mac: parts[1] || null, ssid: parts.slice(2).join(',') || null, raw }, topic: 'goodwe/discovery' };\n}\nnode.status({ fill: 'yellow', shape: 'ring', text: 'onbekend antwoord' });\nreturn null;\n",
+    "func": "// --- Discovery-antwoord verwerken (IP,MAC,SSID) ---\n// Let op: de \"udp in\" node op poort 48899 ontvangt ook de eigen verzonden\n// broadcast (\"WIFIKIT-214028-READ\"). Dat pakket negeren we stil, zodat het de\n// groene \"IP gevonden\"-status niet overschrijft.\nconst raw = (msg.payload == null ? '' : msg.payload.toString()).trim();\nconst parts = raw.split(',');\nconst ip = parts[0];\nif (/^\\d{1,3}(\\.\\d{1,3}){3}$/.test(ip) && parts.length >= 2) {\n  flow.set('goodweIp', ip);\n  node.status({ fill: 'green', shape: 'dot', text: 'IP gevonden: ' + ip });\n  return { payload: { ip, mac: parts[1] || null, ssid: parts.slice(2).join(',') || null, raw }, topic: 'goodwe/discovery' };\n}\n// Onbekend/eigen pakket: stil negeren, status niet wijzigen.\nreturn null;\n",
     "outputs": 1,
     "timeout": 0,
     "noerr": 0,
